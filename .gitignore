@@ -1,0 +1,32 @@
+# ==========================================
+# RUST BUILD ARTIFACTS
+# ==========================================
+/target/
+**/*.rs.bk
+# Cargo.lock
+
+# ==========================================
+# SQLITE DATABASE FILES
+# ==========================================
+# We ignore the local database so we don't commit mock data to the repository.
+quiz.db
+quiz.db-shm
+quiz.db-wal
+concerns.txt
+quiz-modeling.sql
+
+# ==========================================
+# OS GENERATED FILES
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ==========================================
+# ENVIRONMENT VARIABLES
+# ==========================================
+.env
