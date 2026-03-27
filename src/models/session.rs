@@ -60,3 +60,38 @@ pub struct CreateQuestionPayload {
     // A question must always be created with its options!
     pub options: Vec<CreateOptionPayload>,
 }
+
+// MODELS FOR GETTING QUESTIONS & OPTIONS
+#[derive(Debug, Serialize, FromRow, ToSchema)]
+pub struct OptionResponse {
+    #[schema(example = 1)]
+    pub id: i64,
+    #[schema(example = "Maputo")]
+    pub text: String,
+    #[schema(example = true)]
+    pub is_correct: bool,
+}
+
+/// A temporary struct to map the database row before attaching options
+#[derive(Debug, FromRow)]
+pub struct QuestionDbRow {
+    pub id: i64,
+    pub text: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct QuestionResponse {
+    #[schema(example = 1)]
+    pub id: i64,
+    #[schema(example = "Qual é a capital de Moçambique?")]
+    pub text: String,
+    pub options: Vec<OptionResponse>,
+}
+
+/// Payload for updating the status of a session
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateSessionStatusPayload {
+    /// Must be 'draft', 'active', or 'completed'
+    #[schema(example = "draft or active or completed")]
+    pub status: String,
+}

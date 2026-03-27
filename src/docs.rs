@@ -31,12 +31,17 @@ use crate::models::{class::*, score::*, session::*, student::*, subject::*, teac
         student_handler::delete_student,
         student_handler::get_students_by_class,
         
+        // --- SESSION PATHS ---
         session_handler::create_session,
         session_handler::get_sessions,
         session_handler::get_session_by_id,
         session_handler::delete_session,
         session_handler::add_question_to_session,
+        session_handler::upload_bulk_questions_text,
+        session_handler::get_session_questions,
+        session_handler::update_session_status,
         
+        // --- SCORE PATHS ---
         score_handler::sync_scores,
         score_handler::get_session_scores,
     ),
@@ -46,7 +51,12 @@ use crate::models::{class::*, score::*, session::*, student::*, subject::*, teac
             Class, CreateClassPayload,
             Subject, CreateSubjectPayload,
             Student, CreateStudentPayload,
+            
+            // --- SESSION SCHEMAS ---
             Session, CreateSessionPayload, CreateQuestionPayload, CreateOptionPayload,
+            QuestionResponse, OptionResponse, UpdateSessionStatusPayload,
+            
+            // --- SCORE SCHEMAS ---
             Score, ScoreSyncPayload 
         )
     ),

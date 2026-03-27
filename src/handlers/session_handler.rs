@@ -6,7 +6,10 @@ use axum::{
 use serde_json::{Value, json};
 
 use crate::AppState;
-use crate::models::session::{CreateQuestionPayload, CreateSessionPayload, Session};
+use crate::models::session::{
+    CreateQuestionPayload, CreateSessionPayload, QuestionResponse, Session,
+    UpdateSessionStatusPayload,
+};
 use crate::repositories::session_repo;
 
 // ==========================================
@@ -141,5 +144,163 @@ pub async fn delete_session(
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": e.to_string() })),
         )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/sessions/{session_id}/questions/bulk-text",
+    request_body(content = String, description = "Raw text content with specific formatting", content_type = "text/plain"),
+    params(
+        ("session_id" = i64, Path, description = "The ID of the session")
+    ),
+    responses(
+        (status = 201, description = "Bulk questions parsed and added atomically"),
+        (status = 400, description = "Invalid text format"),
+        (status = 500, description = "Database constraint error")
+    ),
+    tag = "Sessions"
+)]
+pub async fn upload_bulk_questions_text(
+    State(state): State<AppState>,
+    Path(session_id): Path<i64>,
+    body: String, // Accepts the raw text file content
+) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+    let mut parsed_questions: Vec<CreateQuestionPayload> = Vec::new();
+
+    // Normalize line endings (Windows \r\n to Linux \n) and split by double newlines
+    let normalized_text = body.replace("\r\n", "\n");
+    let blocks = normalized_text.split("\n\n");
+
+    for block in blocks {
+        let lines: Vec<&str> = block.lines().filter(|l| !l.trim().is_empty()).collect();
+
+        if lines.is_empty() {
+            continue;
+        }
+
+        // The first line of the block is the question text
+        let question_text = lines[0].trim().to_string();
+        let mut options: Vec<crate::models::session::CreateOptionPayload> = Vec::new();
+
+        // The following lines are the options (* for correct, - for wrong)
+        for line in lines.iter().skip(1) {
+            let line = line.trim();
+            if line.starts_with('*') {
+                options.push(crate::models::session::CreateOptionPayload {
+                    text: line[1..].trim().to_string(),
+                    is_correct: true,
+                });
+            } else if line.starts_with('-') {
+                options.push(crate::models::session::CreateOptionPayload {
+                    text: line[1..].trim().to_string(),
+                    is_correct: false,
+                });
+            }
+        }
+
+        // Only add if the question has at least one option to avoid corrupt data
+        if !options.is_empty() {
+            parsed_questions.push(CreateQuestionPayload {
+                text: question_text,
+                options,
+            });
+        }
+    }
+
+    if parsed_questions.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "No valid questions found in the provided text." })),
+        ));
+    }
+
+    // Pass the parsed array to our atomic repository function
+    match session_repo::add_bulk_questions_to_session(&state.db_pool, session_id, &parsed_questions)
+        .await
+    {
+        Ok(count) => {
+            let response = json!({
+                "message": "Bulk questions inserted successfully",
+                "questions_added": count
+            });
+            Ok((StatusCode::CREATED, Json(response)))
+        }
+        Err(e) => {
+            let error_response = json!({ "error": e.to_string() });
+            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)))
+        }
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/sessions/{session_id}/questions",
+    params(
+        ("session_id" = i64, Path, description = "The ID of the session", example = 1)
+    ),
+    responses(
+        (status = 200, description = "List of questions with their nested options", body = [QuestionResponse]),
+        (status = 500, description = "Database error")
+    ),
+    tag = "Sessions"
+)]
+pub async fn get_session_questions(
+    State(state): State<AppState>,
+    Path(session_id): Path<i64>,
+) -> Result<(StatusCode, Json<Vec<QuestionResponse>>), (StatusCode, Json<Value>)> {
+    match session_repo::get_questions_for_session(&state.db_pool, session_id).await {
+        Ok(questions) => Ok((StatusCode::OK, Json(questions))),
+        Err(e) => {
+            let error_response = json!({ "error": e.to_string() });
+            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)))
+        }
+    }
+}
+
+#[utoipa::path(
+    patch,
+    path = "/api/sessions/{session_id}/status",
+    request_body = UpdateSessionStatusPayload,
+    params(
+        ("session_id" = i64, Path, description = "The ID of the session")
+    ),
+    responses(
+        (status = 200, description = "Session status updated successfully"),
+        (status = 400, description = "Invalid status provided"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Database error")
+    ),
+    tag = "Sessions"
+)]
+pub async fn update_session_status(
+    State(state): State<AppState>,
+    Path(session_id): Path<i64>,
+    Json(payload): Json<UpdateSessionStatusPayload>,
+) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+    // 1. Validate the status explicitly before hitting the database
+    let valid_statuses = ["draft", "active", "completed"];
+    if !valid_statuses.contains(&payload.status.as_str()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Invalid status. Must be 'draft', 'active', or 'completed'" })),
+        ));
+    }
+
+    // 2. Update the database
+    match session_repo::update_session_status(&state.db_pool, session_id, &payload.status).await {
+        Ok(0) => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Session not found" })),
+        )),
+        Ok(_) => {
+            let response =
+                json!({ "message": format!("Session status changed to '{}'", payload.status) });
+            Ok((StatusCode::OK, Json(response)))
+        }
+        Err(e) => {
+            let error_response = json!({ "error": e.to_string() });
+            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)))
+        }
     }
 }

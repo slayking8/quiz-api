@@ -1,6 +1,6 @@
 use axum::{
     Router,
-    routing::{get, post},
+    routing::{get, patch, post},
 };
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -62,6 +62,10 @@ pub fn create_router(state: AppState) -> Router {
         )
         // Sessions
         .route(
+            "/api/sessions/:session_id/status",
+            patch(session_handler::update_session_status),
+        )
+        .route(
             "/api/sessions",
             post(session_handler::create_session).get(session_handler::get_sessions),
         )
@@ -71,7 +75,12 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route(
             "/api/sessions/:session_id/questions",
-            post(session_handler::add_question_to_session),
+            post(session_handler::add_question_to_session)
+                .get(session_handler::get_session_questions),
+        )
+        .route(
+            "/api/sessions/:session_id/questions/bulk-text",
+            post(session_handler::upload_bulk_questions_text),
         )
         // Scores
         .route("/api/scores/sync", post(score_handler::sync_scores))
